@@ -1,0 +1,12 @@
+Django==5.0.6
+djangorestframework==3.15.1
+psycopg2-binary
+django-environ==0.11.2
+djangorestframework-simplejwt==5.3.1
+django-filter==24.2
+Pillow
+django-cors-headers==4.3.1
+sentence-transformers==3.0.1
+scikit-learn
+numpy
+google-generativeai==0.5.4
