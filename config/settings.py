@@ -135,6 +135,7 @@ REST_FRAMEWORK = {
         # satisfy Phase 1's rate-limiting security requirement.
         "complaint_submit": "10/hour",
     },
+    "EXCEPTION_HANDLER": "core.exceptions.custom_exception_handler",
 }
 
 # --- SimpleJWT (Phase 4) ------------------------------------------------
@@ -157,6 +158,4 @@ CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
 GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
 
 # --- Logging (delegates to core/logging.py) ------------------------------
-from core.logging import LOGGING_CONFIG  # noqa: E402
-
-LOGGING = LOGGING_CONFIG
+from core.logging import LOGGING_CONFIG, LOGGING
