@@ -10,3 +10,4 @@ sentence-transformers==3.0.1
 scikit-learn
 numpy
 google-generativeai==0.5.4
+langdetect==1.0.9

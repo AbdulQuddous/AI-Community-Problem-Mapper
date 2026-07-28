@@ -156,6 +156,29 @@ CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
 
 # --- Gemini API (used in ai_engine services, Phase 6) --------------------
 GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
+# --- AI Pipeline configuration (Phase 6) ---------------------------------
+SENTENCE_TRANSFORMER_MODEL = env(
+    "SENTENCE_TRANSFORMER_MODEL", default="paraphrase-multilingual-MiniLM-L12-v2"
+)
+GEMINI_MODEL_NAME = env("GEMINI_MODEL_NAME", default="gemini-1.5-flash")
+
+# Duplicate detection (FR8) — geo-bounded cosine similarity
+DUPLICATE_SIMILARITY_THRESHOLD = env.float("DUPLICATE_SIMILARITY_THRESHOLD", default=0.85)
+DUPLICATE_GEO_RADIUS_KM = env.float("DUPLICATE_GEO_RADIUS_KM", default=0.5)
+
+# Clustering / hotspot detection (FR9, FR9A, FR11)
+CLUSTERING_WINDOW_DAYS = env.int("CLUSTERING_WINDOW_DAYS", default=90)
+DBSCAN_EPS_KM = env.float("DBSCAN_EPS_KM", default=0.3)
+DBSCAN_MIN_SAMPLES = env.int("DBSCAN_MIN_SAMPLES", default=3)
+HOTSPOT_MIN_COMPLAINTS = env.int("HOTSPOT_MIN_COMPLAINTS", default=5)
+
+# Cluster centroid matching — how close a new cluster's centroid must be
+# to an existing Cluster row's centroid to be considered "the same" hotspot
+CLUSTER_MATCH_RADIUS_KM = env.float("CLUSTER_MATCH_RADIUS_KM", default=0.4)
+
+# Summary regeneration threshold — only call Gemini for a new summary
+# when the cluster crosses this size or was just created (see 2.6)
+SUMMARY_REGEN_STEP = env.int("SUMMARY_REGEN_STEP", default=3)
 
 # --- Logging (delegates to core/logging.py) ------------------------------
 from core.logging import LOGGING_CONFIG, LOGGING
