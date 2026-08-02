@@ -1,0 +1,96 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+{% block content %}
+
+<div class="row mb-4" id="summary-cards">
+    <div class="col-md-4">
+        <div class="card stat-card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted">Total Complaints</h6>
+                <h3 id="stat-total">—</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stat-card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted">Unresolved</h6>
+                <h3 id="stat-unresolved">—</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stat-card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted">Average Priority</h6>
+                <h3 id="stat-avg-priority">—</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-4">
+        <label class="form-label">Category</label>
+        <select id="filter-category" class="form-select">
+            <option value="">All</option>
+            <option value="garbage">Garbage</option>
+            <option value="roads">Broken Roads</option>
+            <option value="water">Water Shortage</option>
+            <option value="sewer">Sewer Problem</option>
+            <option value="electricity">Electricity Outage</option>
+            <option value="streetlights">Street Lights</option>
+            <option value="illegal_dumping">Illegal Dumping</option>
+            <option value="cleanliness">Public Cleanliness</option>
+            <option value="other">Other</option>
+        </select>
+    </div>
+    <div class="col-md-3">
+        <label class="form-label">Date From</label>
+        <input type="date" id="filter-date-from" class="form-control">
+    </div>
+    <div class="col-md-3">
+        <label class="form-label">Date To</label>
+        <input type="date" id="filter-date-to" class="form-control">
+    </div>
+    <div class="col-md-2 d-flex align-items-end">
+        <button id="apply-filters" class="btn btn-primary w-100">Apply</button>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h6>Complaints by Category</h6>
+                <canvas id="chart-category"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h6>Complaints Trend (30 days)</h6>
+                <canvas id="chart-trend"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h6>Hotspots Map</h6>
+                <div id="hotspot-map"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'dashboard/js/dashboard.js' %}"></script>
+<script src="{% static 'dashboard/js/map.js' %}"></script>
+{% endblock %}

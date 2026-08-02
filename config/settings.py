@@ -182,3 +182,5 @@ SUMMARY_REGEN_STEP = env.int("SUMMARY_REGEN_STEP", default=3)
 
 # --- Logging (delegates to core/logging.py) ------------------------------
 from core.logging import LOGGING_CONFIG, LOGGING
+
+LOGIN_URL = "/api/auth/login/"
