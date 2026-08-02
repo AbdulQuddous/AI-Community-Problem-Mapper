@@ -9,12 +9,14 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
+from apps.dashboard.views import DashboardOverviewView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("api/auth/", include("apps.accounts.urls")),       # Phase 4
-    path("api/complaints/", include("apps.complaints.urls")),  #phase 5
-    #path("api/dashboard/", include("apps.dashboard.urls")),    # Phase 7
+    path("api/auth/", include("apps.accounts.urls")),
+    path("api/complaints/", include("apps.complaints.urls")),
+    path("api/dashboard/", include("apps.dashboard.urls")),  # now resolves — Phase 7
+    path("dashboard/", DashboardOverviewView.as_view(), name="dashboard-overview"),
 ]
 
 if settings.DEBUG:
