@@ -1,0 +1,32 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+{% block title %}Nearby Issues{% endblock %}
+{% block content %}
+
+<div class="row mb-3">
+    <div class="col-12">
+        <h4>Reported Issues Near You</h4>
+        <p class="text-muted">Public view of active complaints in your area. Reporter identity is never shown.</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div id="public-map" style="height: 500px; border-radius: 0.5rem;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-3">
+    <div class="col-12 text-end">
+        <a href="{% url 'complaint-submit-form' %}" class="btn btn-primary">Report a New Issue</a>
+    </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script src="{% static 'complaints/js/public_map.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+{% block title %}Report an Issue{% endblock %}
+{% block content %}
+
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h4 class="mb-3">Report a Community Issue</h4>
+                <div id="submit-alert" class="alert d-none"></div>
+
+                <div class="mb-3">
+                    <label class="form-label">Description</label>
+                    <textarea id="description" class="form-control" rows="4"
+                        placeholder="Describe the issue in Urdu or English..."></textarea>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Photo (optional)</label>
+                    <input type="file" id="image" class="form-control" accept="image/jpeg,image/png,image/webp">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Pin the location on the map</label>
+                    <div id="location-picker-map" style="height: 350px; border-radius: 0.5rem;"></div>
+                    <small class="text-muted">Click on the map to place a marker at the issue's location.</small>
+                    <input type="hidden" id="latitude">
+                    <input type="hidden" id="longitude">
+                </div>
+
+                <button id="submit-complaint" class="btn btn-primary">Submit Complaint</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script src="{% static 'complaints/js/location_picker.js' %}"></script>
+{% endblock %}

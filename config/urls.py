@@ -10,13 +10,16 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 from apps.dashboard.views import DashboardOverviewView
+from apps.complaints.views import ComplaintSubmitFormView, PublicComplaintMapPageView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/auth/", include("apps.accounts.urls")),
     path("api/complaints/", include("apps.complaints.urls")),
-    path("api/dashboard/", include("apps.dashboard.urls")),  # now resolves — Phase 7
+    path("api/dashboard/", include("apps.dashboard.urls")),
     path("dashboard/", DashboardOverviewView.as_view(), name="dashboard-overview"),
+    path("complaints/submit/", ComplaintSubmitFormView.as_view(), name="complaint-submit-form"),
+    path("complaints/map/", PublicComplaintMapPageView.as_view(), name="complaint-public-map-page"),
 ]
 
 if settings.DEBUG:

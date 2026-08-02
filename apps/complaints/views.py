@@ -117,3 +117,20 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             complaint.id, old_status, new_status, request.user.id,
         )
         return Response(ComplaintReadSerializer(complaint).data)
+
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.views.generic import TemplateView
+
+
+class ComplaintSubmitFormView(LoginRequiredMixin, TemplateView):
+    """GET /complaints/submit/ — the citizen-facing submission form (FR2)."""
+
+    template_name = "complaints/submit.html"
+    login_url = "/api/auth/login/"
+
+
+class PublicComplaintMapPageView(LoginRequiredMixin, TemplateView):
+    """GET /complaints/map/ — the citizen-facing public map page (FR4)."""
+
+    template_name = "complaints/public_map.html"
+    login_url = "/api/auth/login/"
