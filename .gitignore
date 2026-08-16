@@ -13,3 +13,4 @@ staticfiles/
 .env
 .env.*
 .env.example
+apps/ai_engine/ml_models/*.joblib
