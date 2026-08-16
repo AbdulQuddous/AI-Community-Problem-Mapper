@@ -122,15 +122,13 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import TemplateView
 
 
-class ComplaintSubmitFormView(LoginRequiredMixin, TemplateView):
-    """GET /complaints/submit/ — the citizen-facing submission form (FR2)."""
+class ComplaintSubmitFormView(TemplateView):
+    """GET /complaints/submit/ — HTML shell for the citizen submission form."""
 
     template_name = "complaints/submit.html"
-    login_url = "/api/auth/login/"
 
 
-class PublicComplaintMapPageView(LoginRequiredMixin, TemplateView):
-    """GET /complaints/map/ — the citizen-facing public map page (FR4)."""
+class PublicComplaintMapPageView(TemplateView):
+    """GET /complaints/map/ — HTML shell for the public map."""
 
     template_name = "complaints/public_map.html"
-    login_url = "/api/auth/login/"
