@@ -15,15 +15,21 @@
 <body>
     <nav class="navbar navbar-dark bg-dark mb-4">
         <div class="container-fluid">
-            <span class="navbar-brand mb-0 h1">Smart City Problem Mapper — Authority Dashboard</span>
+            <span class="navbar-brand mb-0 h1">Smart City Problem Mapper</span>
+            <div class="d-flex align-items-center">
+                <a id="nav-manage-link" href="/complaints/manage/" class="btn btn-outline-light btn-sm me-2 d-none">Manage Complaints</a>
+                <span id="navbar-username" class="text-light me-3 small"></span>
+                <button id="logout-btn" class="btn btn-outline-light btn-sm d-none">Logout</button>
+            </div>
         </div>
     </nav>
     <div class="container-fluid">
         {% block content %}{% endblock %}
     </div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.3/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="{% static 'accounts/js/navbar_auth.js' %}"></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>
