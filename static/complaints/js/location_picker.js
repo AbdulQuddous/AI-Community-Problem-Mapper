@@ -9,8 +9,8 @@ let pickerMap = null;
 let pickerMarker = null;
 
 function setCoordinates(lat, lon) {
-    document.getElementById("latitude").value = lat;
-    document.getElementById("longitude").value = lon;
+    document.getElementById("latitude").value = Number(lat).toFixed(6);
+    document.getElementById("longitude").value = Number(lon).toFixed(6);
 }
 
 function initLocationPicker(centerLat, centerLon) {
