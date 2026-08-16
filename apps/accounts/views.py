@@ -53,3 +53,17 @@ class MeView(generics.RetrieveAPIView):
 
     def get_object(self):
         return self.request.user
+
+from django.views.generic import TemplateView
+
+
+class LoginPageView(TemplateView):
+    """GET /accounts/login/ — HTML login form (posts to /api/auth/login/ via JS)."""
+
+    template_name = "accounts/login.html"
+
+
+class RegisterPageView(TemplateView):
+    """GET /accounts/register/ — HTML registration form."""
+
+    template_name = "accounts/register.html"
