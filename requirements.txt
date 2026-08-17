@@ -11,3 +11,4 @@ scikit-learn
 numpy
 google-generativeai==0.5.4
 langdetect==1.0.9
+joblib==1.4.2

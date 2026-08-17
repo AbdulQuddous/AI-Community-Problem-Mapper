@@ -1,0 +1,1 @@
+"""Standalone maintenance/training scripts, run manually via `python scripts/<name>.py`."""
