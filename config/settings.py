@@ -164,6 +164,10 @@ GEMINI_MODEL_NAME = env("GEMINI_MODEL_NAME", default="gemini-1.5-flash")
 
 # Duplicate detection (FR8) — geo-bounded cosine similarity
 DUPLICATE_SIMILARITY_THRESHOLD = env.float("DUPLICATE_SIMILARITY_THRESHOLD", default=0.85)
+DUPLICATE_EXACT_LOCATION_RADIUS_KM = env.float("DUPLICATE_EXACT_LOCATION_RADIUS_KM", default=0.05)
+DUPLICATE_SIMILARITY_EXACT_LOCATION_THRESHOLD = env.float(
+    "DUPLICATE_SIMILARITY_EXACT_LOCATION_THRESHOLD", default=0.55
+)
 DUPLICATE_GEO_RADIUS_KM = env.float("DUPLICATE_GEO_RADIUS_KM", default=0.5)
 
 # Clustering / hotspot detection (FR9, FR9A, FR11)
@@ -179,6 +183,14 @@ CLUSTER_MATCH_RADIUS_KM = env.float("CLUSTER_MATCH_RADIUS_KM", default=0.4)
 # Summary regeneration threshold — only call Gemini for a new summary
 # when the cluster crosses this size or was just created (see 2.6)
 SUMMARY_REGEN_STEP = env.int("SUMMARY_REGEN_STEP", default=3)
+
+# Local classifier (replaces Gemini for classification, FR7)
+LOCAL_CLASSIFIER_MODEL_PATH = str(
+    BASE_DIR / "apps" / "ai_engine" / "ml_models" / "classifier.joblib"
+)
+LOCAL_CLASSIFIER_CONFIDENCE_THRESHOLD = env.float(
+    "LOCAL_CLASSIFIER_CONFIDENCE_THRESHOLD", default=0.35
+)
 
 # --- Logging (delegates to core/logging.py) ------------------------------
 from core.logging import LOGGING_CONFIG, LOGGING
