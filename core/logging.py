@@ -29,7 +29,7 @@ LOGGING = {
         },
         "ai_engine": {
             "handlers": ["console"],
-            "level": "INFO",
+            "level": "DEBUG",
             "propagate": False,
         },
         "complaints": {

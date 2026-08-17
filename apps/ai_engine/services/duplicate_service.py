@@ -1,11 +1,16 @@
 """
 Duplicate detection service (FR8).
 
-Geo-bounded prefilter, then cosine similarity — see Phase 6
-Architecture Discussion (2.3) for why this two-stage approach rather
-than a global embedding scan.
+Now that the system is English-only, all complaint embeddings are
+produced from same-script, same-language text — the severe
+similarity-score unreliability we previously saw with Roman Urdu
+(scores as low as 0.15-0.3 for genuine duplicates) no longer applies.
+The exact-location + same-category short-circuit tier is retained as
+a light safety net for edge cases (very short descriptions, unusual
+phrasing) rather than as a primary mechanism.
 """
 import logging
+import math
 from datetime import timedelta
 
 import numpy as np
@@ -15,7 +20,7 @@ from django.utils import timezone
 logger = logging.getLogger("ai_engine")
 
 
-def _cosine_similarity(a: list[float], b: list[float]) -> float:
+def _cosine_similarity(a: list, b: list) -> float:
     a_arr, b_arr = np.array(a), np.array(b)
     denom = np.linalg.norm(a_arr) * np.linalg.norm(b_arr)
     if denom == 0:
@@ -23,16 +28,16 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     return float(np.dot(a_arr, b_arr) / denom)
 
 
-def _bounding_box(lat: float, lon: float, radius_km: float) -> tuple[float, float, float, float]:
-    """
-    Rough lat/lon bounding box for a given radius — a cheap prefilter,
-    not exact great-circle math. 1 degree latitude ~= 111km; longitude
-    degrees shrink with latitude, approximated here as a fixed 111km
-    too, which over-includes slightly near the poles but is more than
-    accurate enough for a single-city deployment.
-    """
+def _bounding_box(lat: float, lon: float, radius_km: float) -> tuple:
     delta = radius_km / 111.0
     return lat - delta, lat + delta, lon - delta, lon + delta
+
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
+    dlat, dlon = lat2 - lat1, lon2 - lon1
+    a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    return 2 * 6371.0 * math.asin(math.sqrt(a))
 
 
 def find_duplicate(complaint) -> object | None:
@@ -40,15 +45,14 @@ def find_duplicate(complaint) -> object | None:
     Search for a near-duplicate of `complaint` among recent, unresolved
     complaints within DUPLICATE_GEO_RADIUS_KM.
 
-    Args:
-        complaint: a Complaint instance with .embedding already populated.
-
-    Returns:
-        The matching Complaint instance if a duplicate is found above
-        DUPLICATE_SIMILARITY_THRESHOLD, else None.
+    Tiers:
+      1. Exact-location + same-category short-circuit: safety net for
+         edge cases where embedding similarity might understate an
+         obvious duplicate (e.g. very short/terse descriptions).
+      2. Standard embedding similarity threshold
+         (DUPLICATE_SIMILARITY_THRESHOLD) for everything else.
     """
-    from apps.complaints.models import Complaint  # local import: avoid
-    # circular import (complaints -> ai_engine -> complaints)
+    from apps.complaints.models import Complaint
 
     if not complaint.embedding:
         return None
@@ -68,11 +72,28 @@ def find_duplicate(complaint) -> object | None:
 
     best_match, best_score = None, 0.0
     for candidate in candidates:
+        same_category = bool(
+            complaint.category and candidate.category and complaint.category == candidate.category
+        )
+        distance_km = _haversine_km(
+            float(complaint.latitude), float(complaint.longitude),
+            float(candidate.latitude), float(candidate.longitude),
+        )
+        is_exact_location = distance_km <= settings.DUPLICATE_EXACT_LOCATION_RADIUS_KM
+
+        if is_exact_location and same_category:
+            logger.info(
+                "Duplicate found (location+category short-circuit): complaint=%s matches=%s "
+                "distance_km=%.4f",
+                complaint.id, candidate.id, distance_km,
+            )
+            return candidate
+
         score = _cosine_similarity(complaint.embedding, candidate.embedding)
-        if score > best_score:
+        if score >= settings.DUPLICATE_SIMILARITY_THRESHOLD and score > best_score:
             best_match, best_score = candidate, score
 
-    if best_match and best_score >= settings.DUPLICATE_SIMILARITY_THRESHOLD:
+    if best_match:
         logger.info(
             "Duplicate found: complaint=%s matches=%s score=%.3f",
             complaint.id, best_match.id, best_score,
