@@ -1,14 +1,9 @@
 """
 Serializers for the Complaint module.
-
-Two serializers are deliberately separate: ComplaintWriteSerializer
-(citizen submission, narrow field set) and ComplaintReadSerializer
-(full representation including AI fields, used for list/retrieve).
-Collapsing these into one serializer would let a citizen see or
-attempt to set AI-derived fields they should never touch directly.
 """
 import logging
 
+from langdetect import LangDetectException, detect
 from rest_framework import serializers
 
 from apps.ai_engine.models import Cluster
@@ -21,8 +16,6 @@ ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"]
 
 
 class ClusterSummarySerializer(serializers.ModelSerializer):
-    """Minimal nested representation of a Complaint's cluster, if assigned."""
-
     class Meta:
         model = Cluster
         fields = ["id", "is_hotspot", "complaint_count", "priority_score"]
@@ -33,32 +26,41 @@ class ComplaintWriteSerializer(serializers.ModelSerializer):
     """
     Used for POST /api/complaints/ (citizen submission, FR2).
 
-    Only accepts citizen-controllable fields. category, priority_score,
-    embedding, cluster, duplicate_of, status are never accepted here —
-    they are either system-managed or AI-populated (FR18/FR19).
+    The system has been scoped to English-only submissions (a
+    deliberate reduction from the original Urdu/English dual-language
+    requirement) to avoid the reliability problems of cross-script/
+    cross-lingual embedding similarity and classification — see
+    project notes on duplicate_service.py for the history here.
+    Non-English text is rejected at submission time with a clear
+    error, rather than silently mishandled downstream in enrichment.
     """
 
     class Meta:
         model = Complaint
         fields = ["id", "description", "latitude", "longitude", "image", "language"]
-        read_only_fields = ["id"]
-        extra_kwargs = {
-            "language": {"required": False},
-        }
+        read_only_fields = ["id", "language"]
 
     def validate_description(self, value: str) -> str:
-        """Ensure the complaint has meaningful content (FR2)."""
-        if len(value.strip()) < 10:
+        """Ensure the complaint has meaningful content (FR2) and is in English."""
+        value = value.strip()
+        if len(value) < 10:
             raise serializers.ValidationError(
                 "Description must be at least 10 characters."
             )
-        return value.strip()
+
+        try:
+            detected = detect(value)
+        except LangDetectException:
+            detected = None
+
+        if detected != "en":
+            raise serializers.ValidationError(
+                "Please submit your complaint in English. "
+                "The system currently only supports English descriptions."
+            )
+        return value
 
     def validate_image(self, value):
-        """
-        Enforce file type/size limits — Phase 1 risk mitigation for
-        image upload abuse.
-        """
         if value is None:
             return value
         if value.size > MAX_IMAGE_SIZE_MB * 1024 * 1024:
@@ -74,7 +76,6 @@ class ComplaintWriteSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs: dict) -> dict:
-        """Validate latitude/longitude are within plausible real-world bounds."""
         lat = attrs.get("latitude")
         lon = attrs.get("longitude")
         if lat is not None and not (-90 <= lat <= 90):
@@ -84,9 +85,8 @@ class ComplaintWriteSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data: dict) -> Complaint:
-        """Attach the requesting user; language defaults to unknown until
-        Phase 6's language detection step runs."""
         validated_data["user"] = self.context["request"].user
+        validated_data["language"] = "en"  # enforced at validation, so this is always safe now
         complaint = Complaint.objects.create(**validated_data)
         logger.info(
             "Complaint created: id=%s user_id=%s", complaint.id, complaint.user_id
@@ -95,12 +95,6 @@ class ComplaintWriteSerializer(serializers.ModelSerializer):
 
 
 class ComplaintReadSerializer(serializers.ModelSerializer):
-    """
-    Used for GET (list/retrieve). Includes AI-derived fields as
-    read-only, and a nested cluster summary for dashboard/authority
-    consumption (FR13, FR14).
-    """
-
     cluster = ClusterSummarySerializer(read_only=True)
     user = serializers.StringRelatedField(read_only=True)
 
@@ -115,16 +109,6 @@ class ComplaintReadSerializer(serializers.ModelSerializer):
 
 
 class ComplaintStatusUpdateSerializer(serializers.ModelSerializer):
-    """
-    Used for PATCH /api/complaints/{id}/status/ (FR16, authority-only).
-
-    Deliberately its own serializer rather than reusing
-    ComplaintReadSerializer with partial=True — status transitions
-    need their own validation (no arbitrary jump to any status) and
-    must write a ComplaintStatusHistory row, which a generic
-    serializer update() wouldn't know to do.
-    """
-
     class Meta:
         model = Complaint
         fields = ["status"]

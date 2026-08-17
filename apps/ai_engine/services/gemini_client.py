@@ -1,100 +1,63 @@
 """
-Orchestrator for asynchronous complaint enrichment (FR18/FR19).
+Single chokepoint for all Gemini API calls.
 
-This function implements, in order, exactly the steps specified in
-the Phase 2 sequence diagram (section 5.1). Each step's failure mode
-is handled locally so that one failed Gemini call never prevents the
-remaining steps from running or corrupts the complaint's saved state.
+Every Gemini-calling service (classification, priority, summarization)
+routes through call_gemini() so failure handling is written exactly
+once, satisfying FR19: a Gemini failure must never crash the
+enrichment pipeline, only cause that one field to stay null.
+
+Uses the google-genai SDK (the modern replacement for the deprecated
+google-generativeai package). This SDK uses a simple, direct API-key
+client with no gRPC/ADC credential resolution ambiguity — it was
+adopted specifically because the old SDK intermittently authenticated
+via an unrelated ambient credential path on this project's dev
+machine instead of honoring the explicit API key.
 """
 import logging
 
+from google import genai
 from django.conf import settings
 
-from apps.ai_engine.services import (
-    classification_service,
-    clustering_service,
-    duplicate_service,
-    embedding_service,
-    language_service,
-    priority_service,
-    summarization_service,
-)
+from core.exceptions import AIServiceUnavailableError
 
 logger = logging.getLogger("ai_engine")
 
+_client = None
 
-def enrich_complaint(complaint_id: str) -> None:
-    """
-    Run full AI enrichment for a single complaint, out-of-band from
-    the request/response cycle. Never raises — all failure modes are
-    caught and logged internally, since this runs on a daemon thread
-    with no caller to propagate exceptions to.
-    """
-    from apps.complaints.models import Complaint
 
+def _get_client():
+    """Lazily construct the genai Client exactly once per process."""
+    global _client
+    if _client is None:
+        if not settings.GEMINI_API_KEY:
+            raise AIServiceUnavailableError("GEMINI_API_KEY is not set.")
+        _client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    return _client
+
+
+def call_gemini(prompt: str) -> str:
+    """
+    Send a prompt to Gemini and return the raw text response.
+
+    Raises:
+        AIServiceUnavailableError: on any failure (missing key, network
+            error, API error, empty response). Callers must catch this
+            and apply the FR19 fallback (leave the relevant field null)
+            rather than letting it propagate to the enrichment thread's
+            caller.
+    """
     try:
-        complaint = Complaint.objects.get(id=complaint_id)
-    except Complaint.DoesNotExist:
-        logger.error("Enrichment skipped: Complaint %s not found.", complaint_id)
-        return
-
-    # Step 1: language detection (local, always succeeds or defaults to unknown)
-    complaint.language = language_service.detect_language(complaint.description)
-
-    # Step 2: embedding generation (local, Sentence Transformers)
-    try:
-        complaint.embedding = embedding_service.generate_embedding(complaint.description)
-    except Exception as exc:  # noqa: BLE001 — local model failure is unexpected but must not crash the thread
-        logger.error("Embedding generation failed for complaint %s: %s", complaint.id, exc)
-        complaint.save(update_fields=["language", "updated_at"])
-        return  # without an embedding, duplicate check/clustering can't run meaningfully
-
-    complaint.save(update_fields=["language", "embedding", "updated_at"])
-
-    # Step 3: duplicate detection (local, FR8) — short-circuits remaining steps if matched
-    duplicate = duplicate_service.find_duplicate(complaint)
-    if duplicate:
-        complaint.duplicate_of = duplicate
-        complaint.save(update_fields=["duplicate_of", "updated_at"])
-        logger.info("Complaint %s marked as duplicate of %s; enrichment stopped.", complaint.id, duplicate.id)
-        return
-
-    # Step 4: classification (Gemini, FR7) — degrade gracefully per FR19
-    complaint.category = classification_service.classify_complaint(complaint.description)
-    complaint.save(update_fields=["category", "updated_at"])
-
-    if not complaint.category:
-        logger.info("Complaint %s has no category (Gemini unavailable); skipping clustering/priority.", complaint.id)
-        return
-
-    # Step 5: clustering (local, DBSCAN, FR9/FR9A/FR11)
-    cluster = clustering_service.assign_cluster(complaint)
-
-    # Step 6: priority estimation (Gemini, FR10) — degrade gracefully per FR19
-    complaint.priority_score = priority_service.estimate_priority(complaint, cluster)
-    complaint.save(update_fields=["priority_score", "updated_at"])
-
-    # Step 7: cluster summary (Gemini, FR12) — only when cluster is new/changed enough
-    if cluster and _should_regenerate_summary(cluster):
-        summary = summarization_service.summarize_cluster(cluster)
-        if summary:
-            cluster.summary_text = summary
-            cluster.save(update_fields=["summary_text", "updated_at"])
-
-    logger.info(
-        "Enrichment complete for complaint %s: category=%s priority=%s cluster=%s",
-        complaint.id, complaint.category, complaint.priority_score,
-        cluster.id if cluster else None,
-    )
-
-
-def _should_regenerate_summary(cluster) -> bool:
-    """
-    Regenerate the summary when the cluster has no summary yet, or its
-    size has grown by SUMMARY_REGEN_STEP since it's plausible the
-    previous summary is now stale. See Phase 6 Architecture
-    Discussion (2.6).
-    """
-    if not cluster.summary_text:
-        return True
-    return cluster.complaint_count % settings.SUMMARY_REGEN_STEP == 0
+        client = _get_client()
+        response = client.models.generate_content(
+            model=settings.GEMINI_MODEL_NAME,
+            contents=prompt,
+        )
+        text = (response.text or "").strip()
+        if not text:
+            raise AIServiceUnavailableError("Gemini returned an empty response.")
+        return text
+    except AIServiceUnavailableError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — intentionally broad, see docstring
+        logger.warning("Gemini API call failed: %s", exc)
+        raise AIServiceUnavailableError(str(exc)) from exc
