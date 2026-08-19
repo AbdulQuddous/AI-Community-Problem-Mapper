@@ -25,6 +25,7 @@ is extended with more labeled examples.
 import os
 import sys
 from pathlib import Path
+from collections import Counter
 
 import django
 
@@ -35,7 +36,7 @@ django.setup()
 
 import joblib  # noqa: E402
 from sklearn.linear_model import LogisticRegression  # noqa: E402
-from sklearn.model_selection import train_test_split  # noqa: E402
+from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold  # noqa: E402
 from sklearn.preprocessing import LabelEncoder  # noqa: E402
 from sklearn.metrics import (  # noqa: E402
     accuracy_score,
@@ -46,6 +47,35 @@ from sklearn.metrics import (  # noqa: E402
 from apps.ai_engine.ml_data.training_data import TRAINING_EXAMPLES  # noqa: E402
 from apps.ai_engine.services.embedding_service import generate_embedding  # noqa: E402
 from django.conf import settings  # noqa: E402
+
+
+def check_data_diversity(texts: list[str]) -> None:
+    """
+    Flags suspiciously repetitive training data — a common cause of
+    misleadingly perfect held-out accuracy when data is LLM-generated
+    in batches, since near-duplicate phrasing can leak the 'answer'
+    across the train/test split.
+    """
+    # Check first-4-words prefix repetition
+    prefixes = [" ".join(t.split()[:4]).lower() for t in texts]
+    counts = Counter(prefixes)
+    repeated = {p: c for p, c in counts.items() if c > 3}
+    
+    if repeated:
+        print(f"\n⚠️  {len(repeated)} sentence openings repeated more than 3 times:")
+        for prefix, count in sorted(repeated.items(), key=lambda x: -x[1])[:15]:
+            print(f"   '{prefix}...' appears {count} times")
+    else:
+        print("\n✓ No obviously repetitive sentence patterns detected.")
+    
+    # Check unique words
+    all_words = set()
+    for text in texts:
+        for word in text.lower().split():
+            all_words.add(word)
+    print(f"\n📊 Unique words in dataset: {len(all_words)}")
+    print(f"📊 Average words per complaint: {sum(len(t.split()) for t in texts) / len(texts):.1f}")
+    print(f"📊 Total examples: {len(texts)}")
 
 
 def print_confusion_matrix(y_true, y_pred, class_names) -> None:
@@ -84,23 +114,41 @@ def main() -> None:
     texts = [text for text, _ in TRAINING_EXAMPLES]
     labels = [label for _, label in TRAINING_EXAMPLES]
 
-    print("Generating embeddings (this loads the Sentence Transformer model)...")
+    # --- Diversity Check ---
+    check_data_diversity(texts)
+
+    print("\nGenerating embeddings (this loads the Sentence Transformer model)...")
     embeddings = [generate_embedding(text) for text in texts]
 
     label_encoder = LabelEncoder()
     encoded_labels = label_encoder.fit_transform(labels)
 
+    # --- Cross-Validation (More reliable than single split) ---
+    print("\n📊 Running 5-fold cross-validation...")
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    cv_scores = cross_val_score(
+        LogisticRegression(max_iter=1000, C=0.1, random_state=42),
+        embeddings,
+        encoded_labels,
+        cv=cv,
+        scoring='accuracy'
+    )
+    print(f"   5-fold CV accuracy: {cv_scores.mean():.2%} (+/- {cv_scores.std():.2%})")
+
+    # --- Single train/test split (for detailed reporting) ---
     x_train, x_test, y_train, y_test = train_test_split(
         embeddings, encoded_labels, test_size=0.2, random_state=42, stratify=encoded_labels,
     )
 
-    print(f"Training LogisticRegression on {len(x_train)} examples...")
-    classifier = LogisticRegression(max_iter=1000, C=1.0)
+    print(f"\nTraining LogisticRegression on {len(x_train)} examples...")
+    # C=0.1 = stronger regularization to prevent overfitting
+    classifier = LogisticRegression(max_iter=1000, C=0.1, random_state=42)
     classifier.fit(x_train, y_train)
 
     y_pred = classifier.predict(x_test)
     accuracy = accuracy_score(y_test, y_pred)
     print(f"\nHeld-out accuracy: {accuracy:.2%}")
+
     print("\nPer-category performance:")
     print(classification_report(y_test, y_pred, target_names=label_encoder.classes_, zero_division=0))
 
