@@ -40,10 +40,42 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * 6371.0 * math.asin(math.sqrt(a))
 
 
+def _resolve_root(complaint) -> object:
+    """
+    Follows duplicate_of up to the original, non-duplicate complaint.
+    Guards against a pathological multi-hop chain (shouldn't occur
+    given this function is always used, but defensive nonetheless)
+    with a max hop limit.
+    """
+    root = complaint
+    hops = 0
+    # Prevent infinite loops with a reasonable max depth
+    while root.duplicate_of_id is not None and hops < 5:
+        root = root.duplicate_of
+        hops += 1
+    
+    if hops >= 5:
+        logger.warning(
+            "Duplicate chain exceeded 5 hops for complaint %s, stopping at %s",
+            complaint.id, root.id
+        )
+    
+    return root
+
+
 def find_duplicate(complaint) -> object | None:
     """
     Search for a near-duplicate of `complaint` among recent, unresolved
     complaints within DUPLICATE_GEO_RADIUS_KM.
+
+    Always returns the ROOT complaint of a duplicate chain, never an
+    intermediate duplicate — this keeps duplicate_of chains exactly
+    one level deep (main complaint <- duplicates), matching the
+    assumption baked into the Manage Complaints page (see
+    manage_serializers.py). Without this resolution, a third report
+    of the same issue could end up pointing to the second report
+    (itself a duplicate) instead of the original, orphaning it from
+    the manage page's one-level nesting.
 
     Tiers:
       1. Exact-location + same-category short-circuit: safety net for
@@ -81,22 +113,27 @@ def find_duplicate(complaint) -> object | None:
         )
         is_exact_location = distance_km <= settings.DUPLICATE_EXACT_LOCATION_RADIUS_KM
 
+        # Tier 1: short-circuit, no embedding check needed at all.
         if is_exact_location and same_category:
+            # CRITICAL: Resolve to the root original
+            root = _resolve_root(candidate)
             logger.info(
                 "Duplicate found (location+category short-circuit): complaint=%s matches=%s "
-                "distance_km=%.4f",
-                complaint.id, candidate.id, distance_km,
+                "(resolved to root=%s) distance_km=%.4f",
+                complaint.id, candidate.id, root.id, distance_km,
             )
-            return candidate
+            return root
 
         score = _cosine_similarity(complaint.embedding, candidate.embedding)
         if score >= settings.DUPLICATE_SIMILARITY_THRESHOLD and score > best_score:
             best_match, best_score = candidate, score
 
     if best_match:
+        # CRITICAL: Resolve to the root original
+        root = _resolve_root(best_match)
         logger.info(
-            "Duplicate found: complaint=%s matches=%s score=%.3f",
-            complaint.id, best_match.id, best_score,
+            "Duplicate found: complaint=%s matches=%s (resolved to root=%s) score=%.3f",
+            complaint.id, best_match.id, root.id, best_score,
         )
-        return best_match
+        return root
     return None
