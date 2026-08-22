@@ -1,13 +1,17 @@
 """
 Orchestrator for asynchronous complaint enrichment (FR18/FR19).
 
-Note: language detection step removed. The system is now scoped to
-English-only submissions (enforced in ComplaintWriteSerializer at
-submission time), so every complaint reaching this pipeline is
-already guaranteed to be English — no per-complaint detection needed.
+Note: language detection step removed (English-only system).
+Note on step order: classification runs BEFORE duplicate detection.
 
-Note on step order: classification runs BEFORE duplicate detection so
-duplicate_service can use category as a corroborating signal.
+Note on duplicate handling: when a complaint is found to be a
+duplicate, clustering/priority/summary are re-run on the ORIGINAL
+complaint, not skipped entirely. A duplicate is real evidence that a
+hotspot exists or has grown — without this, complaints that get
+merged as duplicates would never contribute to cluster formation,
+and a genuinely urgent, frequently-reported issue could end up with
+no cluster and no AI summary at all, simply because every report
+after the first was short-circuited before reaching clustering.
 """
 import logging
 
@@ -64,20 +68,43 @@ def enrich_complaint(complaint_id: str) -> None:
         complaint.duplicate_of = duplicate
         complaint.save(update_fields=["duplicate_of", "updated_at"])
         logger.info("Complaint %s marked as duplicate of %s; enrichment stopped.", complaint.id, duplicate.id)
+
+        # The duplicate itself doesn't get clustered/prioritized, but
+        # it IS real evidence that the original's hotspot just grew.
+        # Re-run clustering/priority/summary on the ORIGINAL so a
+        # growing group of duplicates still produces a cluster and
+        # an AI summary, instead of silently having neither.
+        _cluster_prioritize_summarize(duplicate)
         return
 
     if not complaint.category:
         logger.info("Complaint %s has no category (local + Gemini both unavailable); skipping clustering/priority.", complaint.id)
         return
 
-    # Step 4: clustering (local, DBSCAN, FR9/FR9A/FR11)
+    # Steps 4-6: clustering, priority, summary — shared helper, also
+    # used above when a duplicate arrives for an existing complaint.
+    _cluster_prioritize_summarize(complaint)
+
+    logger.info(
+        "Enrichment complete for complaint %s: category=%s priority=%s cluster=%s",
+        complaint.id, complaint.category, complaint.priority_score,
+        complaint.cluster_id,
+    )
+
+
+def _cluster_prioritize_summarize(complaint) -> None:
+    """
+    Runs clustering, priority estimation, and (conditional) summary
+    generation for a single complaint. Extracted as a shared helper
+    so both the normal enrichment path and the "a duplicate just
+    arrived, refresh the original's cluster" path use identical
+    logic — avoids duplicating this three-step sequence.
+    """
     cluster = clustering_service.assign_cluster(complaint)
 
-    # Step 5: priority estimation (Gemini, FR10)
     complaint.priority_score = priority_service.estimate_priority(complaint, cluster)
     complaint.save(update_fields=["priority_score", "updated_at"])
 
-    # Step 6: cluster summary (Gemini, FR12)
     if cluster and _should_regenerate_summary(cluster):
         summary = summarization_service.summarize_cluster(cluster)
         if summary:
@@ -85,9 +112,8 @@ def enrich_complaint(complaint_id: str) -> None:
             cluster.save(update_fields=["summary_text", "updated_at"])
 
     logger.info(
-        "Enrichment complete for complaint %s: category=%s priority=%s cluster=%s",
-        complaint.id, complaint.category, complaint.priority_score,
-        cluster.id if cluster else None,
+        "Cluster/priority refreshed for complaint %s: priority=%s cluster=%s",
+        complaint.id, complaint.priority_score, cluster.id if cluster else None,
     )
 
 

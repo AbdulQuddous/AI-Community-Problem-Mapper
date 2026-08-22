@@ -31,19 +31,22 @@ class DuplicateComplaintSerializer(serializers.ModelSerializer):
 class ComplaintManageSerializer(serializers.ModelSerializer):
     """
     Main complaint representation for the manage page, with its
-    AI-linked duplicates nested inline so authority can see "this is
-    really N reports of one issue" at a glance.
+    AI-linked duplicates nested inline, plus the cluster's AI-written
+    summary (if one exists) so authority can see the hotspot's
+    overview without opening the dashboard separately.
     """
 
     duplicates = DuplicateComplaintSerializer(many=True, read_only=True)
     duplicate_count = serializers.IntegerField(source="duplicates.count", read_only=True)
     user = serializers.StringRelatedField(read_only=True)
+    cluster_summary = serializers.CharField(source="cluster.summary_text", read_only=True, default=None)
+    is_hotspot = serializers.BooleanField(source="cluster.is_hotspot", read_only=True, default=False)
 
     class Meta:
         model = Complaint
         fields = [
             "id", "description", "category", "status", "priority_score",
             "latitude", "longitude", "user", "created_at",
-            "duplicate_count", "duplicates",
+            "duplicate_count", "duplicates", "cluster_summary", "is_hotspot",
         ]
         read_only_fields = fields

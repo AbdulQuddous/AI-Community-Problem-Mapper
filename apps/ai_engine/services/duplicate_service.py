@@ -117,6 +117,9 @@ def find_duplicate(complaint) -> object | None:
         if is_exact_location and same_category:
             # CRITICAL: Resolve to the root original
             root = _resolve_root(candidate)
+            # Guard: if the root is this complaint itself, it's not a real duplicate
+            if root.id == complaint.id:
+                continue
             logger.info(
                 "Duplicate found (location+category short-circuit): complaint=%s matches=%s "
                 "(resolved to root=%s) distance_km=%.4f",
@@ -131,6 +134,9 @@ def find_duplicate(complaint) -> object | None:
     if best_match:
         # CRITICAL: Resolve to the root original
         root = _resolve_root(best_match)
+        # Guard: if the root is this complaint itself, it's not a real duplicate
+        if root.id == complaint.id:
+            return None
         logger.info(
             "Duplicate found: complaint=%s matches=%s (resolved to root=%s) score=%.3f",
             complaint.id, best_match.id, root.id, best_score,

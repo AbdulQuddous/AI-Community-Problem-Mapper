@@ -1,9 +1,11 @@
 /**
  * Manage complaints page: lists main complaints with their AI-linked
- * duplicates nested inline, and a quick status toggle. The toggle
- * reuses the existing PATCH /api/complaints/{id}/status/ action from
- * Phase 5 — status stays the full 4-stage lifecycle server-side;
- * this button is just a fast Solved/Unsolved shortcut over it.
+ * duplicates nested inline, a quick status toggle, and a soft-delete
+ * action. Status toggle and delete both reuse existing backend
+ * actions from Phase 5/this update — no duplicate business logic.
+ * 
+ * Also displays AI-generated hotspot summaries when a cluster has one,
+ * with a toggle button in the Duplicates column.
  */
 if (!localStorage.getItem("access_token")) {
     window.location.href = "/login/";
@@ -71,10 +73,16 @@ function renderRows(complaints) {
         const isResolved = c.status === "resolved";
         const toggleLabel = isResolved ? "Mark Unsolved" : "Mark Solved";
         const toggleClass = isResolved ? "btn-outline-secondary" : "btn-success";
+        const hotspotBadge = c.is_hotspot
+            ? `<span class="badge bg-danger ms-1" title="AI-detected hotspot">Hotspot</span>`
+            : "";
 
         mainRow.innerHTML = `
             <td>${c.category || "<span class='text-muted'>Uncategorized</span>"}</td>
-            <td style="max-width: 320px;">${escapeHtml(c.description).slice(0, 100)}${c.description.length > 100 ? "…" : ""}</td>
+            <td style="max-width: 320px;">
+                ${escapeHtml(c.description).slice(0, 100)}${c.description.length > 100 ? "…" : ""}
+                ${hotspotBadge}
+            </td>
             <td>${c.user || "-"}</td>
             <td>${c.priority_score ?? "N/A"}</td>
             <td><span class="badge ${badgeClass}">${STATUS_LABELS[c.status] || c.status}</span></td>
@@ -82,11 +90,33 @@ function renderRows(complaints) {
                 ${c.duplicate_count > 0
                     ? `<button class="btn btn-sm btn-link p-0" onclick="toggleDuplicates('${c.id}')">${c.duplicate_count} more report${c.duplicate_count > 1 ? "s" : ""}</button>`
                     : "<span class='text-muted'>—</span>"}
+                ${c.cluster_summary
+                    ? `<br><button class="btn btn-sm btn-link p-0 text-info" onclick="toggleSummary('${c.id}')">AI Summary</button>`
+                    : ""}
             </td>
             <td>${new Date(c.created_at).toLocaleDateString()}</td>
-            <td><button class="btn btn-sm ${toggleClass}" onclick="toggleStatus('${c.id}', '${c.status}', this)">${toggleLabel}</button></td>
+            <td class="text-nowrap">
+                <button class="btn btn-sm ${toggleClass} me-1" onclick="toggleStatus('${c.id}', '${c.status}', this)">${toggleLabel}</button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteComplaint('${c.id}', this)">Delete</button>
+            </td>
         `;
         tbody.appendChild(mainRow);
+
+        if (c.cluster_summary) {
+            const summaryRow = document.createElement("tr");
+            summaryRow.id = `summary-${c.id}`;
+            summaryRow.className = "d-none";
+            summaryRow.innerHTML = `
+                <td></td>
+                <td colspan="7">
+                    <div class="ps-3 border-start border-3 border-info bg-light bg-opacity-50 py-2">
+                        <div class="small text-uppercase text-info fw-bold mb-1">AI-Generated Hotspot Summary</div>
+                        <div class="small">${escapeHtml(c.cluster_summary)}</div>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(summaryRow);
+        }
 
         if (c.duplicate_count > 0) {
             const dupRow = document.createElement("tr");
@@ -97,10 +127,13 @@ function renderRows(complaints) {
                 <td colspan="7">
                     <div class="ps-3 border-start border-3">
                         ${c.duplicates.map((d) => `
-                            <div class="small text-muted mb-1">
-                                <strong>${d.user}</strong> — ${escapeHtml(d.description).slice(0, 80)}
-                                <span class="badge ${STATUS_BADGE_CLASS[d.status] || "bg-secondary"} ms-1">${STATUS_LABELS[d.status] || d.status}</span>
-                                <span class="ms-1">(${new Date(d.created_at).toLocaleDateString()})</span>
+                            <div class="small text-muted mb-1 d-flex align-items-center justify-content-between">
+                                <span>
+                                    <strong>${d.user}</strong> — ${escapeHtml(d.description).slice(0, 80)}
+                                    <span class="badge ${STATUS_BADGE_CLASS[d.status] || "bg-secondary"} ms-1">${STATUS_LABELS[d.status] || d.status}</span>
+                                    <span class="ms-1">(${new Date(d.created_at).toLocaleDateString()})</span>
+                                </span>
+                                <button class="btn btn-sm btn-outline-danger ms-2" onclick="deleteComplaint('${d.id}', this)">Delete</button>
                             </div>
                         `).join("")}
                     </div>
@@ -113,6 +146,11 @@ function renderRows(complaints) {
 
 function toggleDuplicates(complaintId) {
     const row = document.getElementById(`duplicates-${complaintId}`);
+    if (row) row.classList.toggle("d-none");
+}
+
+function toggleSummary(complaintId) {
+    const row = document.getElementById(`summary-${complaintId}`);
     if (row) row.classList.toggle("d-none");
 }
 
@@ -131,6 +169,25 @@ async function toggleStatus(complaintId, currentStatus, buttonEl) {
     } else {
         buttonEl.disabled = false;
         alert("Failed to update status.");
+    }
+}
+
+async function deleteComplaint(complaintId, buttonEl) {
+    if (!confirm("Delete this complaint? This will hide it from all views. This cannot be undone by the citizen.")) {
+        return;
+    }
+    buttonEl.disabled = true;
+
+    const response = await fetch(`/api/complaints/${complaintId}/delete/`, {
+        method: "DELETE",
+        headers: authHeaders(),
+    });
+
+    if (response.status === 204) {
+        loadManageList();
+    } else {
+        buttonEl.disabled = false;
+        alert("Failed to delete complaint.");
     }
 }
 
